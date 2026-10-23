@@ -1,0 +1,6 @@
+{
+  "name": "IMANI TEACHERS CENTER",
+  "description": "Kenya CBC & KCSE Schemes of Work, Lesson Plans, KICD Approved Book Materials, Ideas & Revision Hub with M-Pesa Integration",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
