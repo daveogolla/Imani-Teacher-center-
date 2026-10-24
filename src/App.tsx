@@ -12,6 +12,7 @@ import { MpesaPaymentModal } from './components/MpesaPaymentModal';
 import { AuthModal } from './components/AuthModal';
 import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { AndroidFrame } from './components/AndroidFrame';
+import { ShulefitiResourceHub } from './components/ShulefitiResourceHub';
 import {
   Sparkles,
   Smartphone,
@@ -31,7 +32,8 @@ const MainAppContent: React.FC = () => {
   const renderActiveView = () => {
     switch (currentTab) {
       case 'dashboard':
-        return <Dashboard />;
+      case 'resources':
+        return <ShulefitiResourceHub />;
       case 'schemes':
         return <SchemeGenerator />;
       case 'lesson-plans':
@@ -45,7 +47,7 @@ const MainAppContent: React.FC = () => {
       case 'calendar':
         return <ProgressTrackerCalendar />;
       default:
-        return <Dashboard />;
+        return <ShulefitiResourceHub />;
     }
   };
 

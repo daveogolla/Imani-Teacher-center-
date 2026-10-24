@@ -508,13 +508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     format: 'WORD' | 'PDF',
     onSuccessDownload: () => void
   ) => {
-    // If the document has already been verified and paid for, download immediately!
-    if (isDocumentUnlocked(docId, docTitle)) {
-      onSuccessDownload();
-      return;
-    }
-
-    // Strictly open M-Pesa payment modal - document downloads ONLY after verified confirmation!
+    // COMPULSORY: Charge Ksh. 15 for every document downloaded
     setActivePaymentModal({
       isOpen: true,
       docType,

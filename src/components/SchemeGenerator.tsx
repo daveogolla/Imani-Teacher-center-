@@ -829,44 +829,29 @@ export const SchemeGenerator: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Download Actions (Downloads strictly after verified payment confirmation) */}
+                {/* Download Actions (Compulsory Ksh 15 M-Pesa Payment on Every Document Download) */}
                 <div className="flex items-center space-x-2">
-                  {isDocumentUnlocked(activePreviewScheme.id, activePreviewScheme.title) ? (
-                    <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 text-xs font-bold border border-emerald-300 dark:border-emerald-800">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Unlocked</span>
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-lg">
-                      Ksh 15 M-Pesa
-                    </span>
-                  )}
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-800 px-2 py-1 rounded-xl">
+                    Ksh 15 M-Pesa
+                  </span>
 
                   <button
                     onClick={() => handleDownloadWord(activePreviewScheme)}
                     disabled={isDocxDownloading}
                     className="py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs flex items-center space-x-1.5 shadow-md shadow-blue-600/20 transition cursor-pointer"
-                    title={
-                      isDocumentUnlocked(activePreviewScheme.id, activePreviewScheme.title)
-                        ? 'Download Word .docx (Unlocked)'
-                        : 'Download Word .docx (Charges Ksh.15 - downloads after payment confirmation)'
-                    }
+                    title="Download Word .docx (Charges Ksh.15 M-Pesa)"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Word (.docx)</span>
+                    <span>Word (.docx) - Ksh 15</span>
                   </button>
 
                   <button
                     onClick={() => handleDownloadPdf(activePreviewScheme)}
                     className="py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs flex items-center space-x-1.5 shadow-md shadow-purple-600/20 transition cursor-pointer"
-                    title={
-                      isDocumentUnlocked(activePreviewScheme.id, activePreviewScheme.title)
-                        ? 'Print / Download PDF (Unlocked)'
-                        : 'Print / Download PDF (Charges Ksh.15 - downloads after payment confirmation)'
-                    }
+                    title="Print / Download PDF (Charges Ksh.15 M-Pesa)"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>PDF / Print</span>
+                    <span>PDF / Print - Ksh 15</span>
                   </button>
                 </div>
               </div>

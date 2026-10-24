@@ -12,57 +12,40 @@ import {
   Download,
   X,
   CreditCard,
-  Zap,
-  Radio,
-  Clock,
-  ArrowRight,
   Send,
   Lock,
+  ArrowRight,
+  RefreshCw,
+  Clock,
 } from 'lucide-react';
 
 export const MpesaPaymentModal: React.FC = () => {
   const { activePaymentModal, closePaymentModal, recordSuccessfulPayment, user } = useApp();
 
-  const [paymentMode, setPaymentMode] = useState<'STK_PROMPT' | 'MANUAL_CODE'>('STK_PROMPT');
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber || '0707423879');
   const [transactionCode, setTransactionCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isSendingPrompt, setIsSendingPrompt] = useState(false);
+  const [promptSentMessage, setPromptSentMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedAmount, setCopiedAmount] = useState(false);
   const [verifiedReceipt, setVerifiedReceipt] = useState<MpesaReceipt | null>(null);
 
-  // STK Push state
-  const [stkSent, setStkSent] = useState(false);
-  const [stkCountdown, setStkCountdown] = useState(30);
-  const [stkReceiptCode, setStkReceiptCode] = useState('');
-  const [simulatedPin, setSimulatedPin] = useState('');
-  const [promptMessage, setPromptMessage] = useState('');
-
   // Reset state when modal opens
   useEffect(() => {
     if (activePaymentModal?.isOpen) {
-      setStkSent(false);
-      setStkCountdown(30);
-      setSimulatedPin('');
+      setTransactionCode('');
+      setIsVerifying(false);
+      setIsSendingPrompt(false);
+      setPromptSentMessage('');
       setErrorMsg('');
       setVerifiedReceipt(null);
-      if (user.phoneNumber) {
-        setPhoneNumber(user.phoneNumber);
-      }
-    }
-  }, [activePaymentModal?.isOpen, user.phoneNumber]);
 
-  // STK countdown timer
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (stkSent && stkCountdown > 0 && !verifiedReceipt) {
-      timer = setTimeout(() => {
-        setStkCountdown((prev) => prev - 1);
-      }, 1000);
+      const targetPhone = user.phoneNumber || '0707423879';
+      setPhoneNumber(targetPhone);
     }
-    return () => clearTimeout(timer);
-  }, [stkSent, stkCountdown, verifiedReceipt]);
+  }, [activePaymentModal?.isOpen]);
 
   if (!activePaymentModal || !activePaymentModal.isOpen) return null;
 
@@ -78,15 +61,16 @@ export const MpesaPaymentModal: React.FC = () => {
     setTimeout(() => setCopiedAmount(false), 2000);
   };
 
-  // 1. Send Prompt to User's Phone Number (STK Push)
-  const handleSendStkPush = async () => {
+  // Optional: Trigger STK Push prompt to user's phone
+  const handleTriggerStkPush = async () => {
     if (!phoneNumber || phoneNumber.trim().length < 9) {
-      setErrorMsg('Please enter a valid Kenyan Safaricom phone number (e.g. 0707423879).');
+      setErrorMsg('Please enter a valid Safaricom phone number to receive prompt (e.g. 0712345678).');
       return;
     }
 
-    setIsVerifying(true);
+    setIsSendingPrompt(true);
     setErrorMsg('');
+    setPromptSentMessage('');
 
     try {
       const res = await fetch('/api/mpesa/stk-push', {
@@ -101,44 +85,34 @@ export const MpesaPaymentModal: React.FC = () => {
 
       const data = await res.json();
       if (data.success) {
-        setStkSent(true);
-        setStkReceiptCode(data.generatedReceipt || 'SLT' + Math.floor(1000000 + Math.random() * 9000000));
-        setPromptMessage(data.message);
-        setStkCountdown(30);
+        setPromptSentMessage(
+          `Payment prompt sent to ${phoneNumber}! Enter your M-Pesa PIN on your phone, then copy the confirmation code from Safaricom SMS and paste it below.`
+        );
       } else {
-        setErrorMsg(data.message || 'Failed to trigger phone prompt. Try again or use manual code.');
+        setErrorMsg(data.message || 'Failed to trigger phone prompt. Please use Send Money to 0707423879.');
       }
     } catch (err) {
-      // Fallback: simulate immediate prompt
-      setStkSent(true);
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let code = 'SLT';
-      for (let i = 0; i < 7; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-      setStkReceiptCode(code);
-      setPromptMessage(`Payment prompt sent to ${phoneNumber}. Please enter your M-Pesa PIN.`);
-      setStkCountdown(30);
+      setPromptSentMessage(
+        `Payment prompt dispatched to ${phoneNumber}. Once you approve and receive the Safaricom confirmation SMS, enter the reference code below.`
+      );
     } finally {
-      setIsVerifying(false);
+      setIsSendingPrompt(false);
     }
   };
 
-  // Complete STK or PIN authorization
-  const handleAuthorizePrompt = () => {
-    const code = stkReceiptCode || 'SLT' + Math.floor(1000000 + Math.random() * 9000000);
-    completePayment(code);
-  };
+  // MANDATORY: Verify M-Pesa transaction reference code before downloading!
+  const handleConfirmMpesaCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
-  // 2. Manual Verification with SMS code
-  const handleVerifyManualCode = (simulatedCode?: string) => {
-    const codeToVerify = (simulatedCode || transactionCode).trim().toUpperCase();
-    if (codeToVerify.length < 5) {
-      setErrorMsg('Please enter a valid M-Pesa confirmation code (e.g., SLT894K20L)');
+    const codeToVerify = transactionCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    if (!codeToVerify || codeToVerify.length < 8) {
+      setErrorMsg(
+        'Please enter a valid M-Pesa SMS reference code (e.g., TD7491NM82 or SLT894K20L) received after paying Ksh 15 to 0707423879.'
+      );
       return;
     }
-    completePayment(codeToVerify);
-  };
 
-  const completePayment = async (code: string) => {
     setIsVerifying(true);
     setErrorMsg('');
 
@@ -147,7 +121,7 @@ export const MpesaPaymentModal: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          transactionCode: code,
+          transactionCode: codeToVerify,
           phoneNumber: phoneNumber,
           amount: 15,
           documentTitle: activePaymentModal.docTitle,
@@ -155,8 +129,16 @@ export const MpesaPaymentModal: React.FC = () => {
       });
 
       const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setErrorMsg(data.message || 'Verification failed. Please check the transaction code and try again.');
+        setIsVerifying(false);
+        return;
+      }
+
+      // Valid payment confirmed!
       const receipt: MpesaReceipt = {
-        receiptNo: data.receipt?.receiptNo || code,
+        receiptNo: data.receipt?.receiptNo || codeToVerify,
         amount: 15,
         recipientPhone: '0707423879',
         payerPhone: phoneNumber,
@@ -171,44 +153,30 @@ export const MpesaPaymentModal: React.FC = () => {
       recordSuccessfulPayment(receipt);
 
       confetti({
-        particleCount: 90,
-        spread: 75,
+        particleCount: 100,
+        spread: 80,
         origin: { y: 0.6 },
         colors: ['#00a859', '#10b981', '#34d399', '#ffffff'],
       });
-    } catch (err) {
-      const receipt: MpesaReceipt = {
-        receiptNo: code,
-        amount: 15,
-        recipientPhone: '0707423879',
-        payerPhone: phoneNumber,
-        documentTitle: activePaymentModal.docTitle,
-        documentType: activePaymentModal.docType,
-        documentId: activePaymentModal.docId,
-        dateTime: new Date().toLocaleTimeString('en-KE'),
-        downloadFormat: activePaymentModal.format,
-      };
-
-      setVerifiedReceipt(receipt);
-      recordSuccessfulPayment(receipt);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+    } catch (err: any) {
+      setErrorMsg('Network error while verifying transaction code. Please try again.');
     } finally {
       setIsVerifying(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden transition-all">
-        {/* Top Header Badge */}
-        <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 px-6 py-4 text-white flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/85 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden transition-all max-h-[94vh] flex flex-col">
+        {/* Top Header */}
+        <div className="bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-800 px-6 py-4 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center border border-white/30 shadow-inner">
               <Smartphone className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-bold text-base md:text-lg leading-tight">M-PESA Official Checkout</h3>
-              <p className="text-xs text-emerald-100 font-medium">0707423879 (IMANI TEACHERS CENTER)</p>
+              <h3 className="font-black text-base md:text-lg leading-tight">M-PESA Payment Confirmation</h3>
+              <p className="text-xs text-emerald-100 font-medium">Recipient: 0707423879 (IMANI TEACHERS CENTER)</p>
             </div>
           </div>
           <button
@@ -220,25 +188,25 @@ export const MpesaPaymentModal: React.FC = () => {
         </div>
 
         {verifiedReceipt ? (
-          // Verified Success Screen - Confirmed Payment
-          <div className="p-6 text-center space-y-4">
+          // Verified Success Screen - Confirmed Payment by Reference Code
+          <div className="p-6 text-center space-y-4 overflow-y-auto">
             <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-400 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <CheckCircle2 className="w-10 h-10 animate-bounce text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
               <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold mb-1 border border-emerald-300 dark:border-emerald-800">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Payment Confirmed & Verified</span>
+                <span>Payment Confirmed by M-Pesa</span>
               </div>
               <h4 className="text-xl font-extrabold text-slate-900 dark:text-white">Document Unlocked!</h4>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                Ksh 15.00 payment received for <span className="font-semibold text-emerald-600 dark:text-emerald-400">{verifiedReceipt.documentTitle}</span>
+                Ksh 15.00 payment verified for <span className="font-semibold text-emerald-600 dark:text-emerald-400">{verifiedReceipt.documentTitle}</span>
               </p>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 text-left text-xs space-y-2.5">
               <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/60 dark:border-slate-700/60">
-                <span className="text-slate-500">M-PESA Receipt No:</span>
+                <span className="text-slate-500">M-PESA Reference Code:</span>
                 <span className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-sm tracking-wider">{verifiedReceipt.receiptNo}</span>
               </div>
               <div className="flex justify-between">
@@ -246,15 +214,11 @@ export const MpesaPaymentModal: React.FC = () => {
                 <span className="font-semibold text-slate-800 dark:text-slate-200">0707423879 (IMANI TEACHERS CENTER)</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Amount Verified:</span>
+                <span className="text-slate-500">Amount Paid:</span>
                 <span className="font-bold text-slate-900 dark:text-white">Ksh 15.00</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Payer Number:</span>
-                <span className="font-medium text-slate-700 dark:text-slate-300">{verifiedReceipt.payerPhone}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Unlocked Format:</span>
+                <span className="text-slate-500">Format:</span>
                 <span className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-bold uppercase text-[11px]">
                   {verifiedReceipt.downloadFormat === 'WORD' ? 'Microsoft Word (.docx)' : 'Printable PDF'}
                 </span>
@@ -263,7 +227,7 @@ export const MpesaPaymentModal: React.FC = () => {
 
             <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-left text-xs flex items-center space-x-2 text-emerald-800 dark:text-emerald-300">
               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>Your file download has started. If your browser blocked the window or popup, click the button below to re-download.</span>
+              <span>Your download has begun. You can also re-download the document at any time below.</span>
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
@@ -277,280 +241,167 @@ export const MpesaPaymentModal: React.FC = () => {
                 className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-md shadow-emerald-600/30 flex items-center justify-center space-x-2 transition cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                <span>Download Document Again / Open File</span>
+                <span>Download Document Again</span>
               </button>
               <button
                 type="button"
                 onClick={closePaymentModal}
                 className="w-full py-2 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition cursor-pointer"
               >
-                Done & Close Window
+                Done & Close
               </button>
             </div>
           </div>
         ) : (
-          <div className="p-5 md:p-6 space-y-4">
+          <div className="p-5 md:p-6 space-y-4 overflow-y-auto">
             {/* Target Document Info */}
             <div className="bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 rounded-2xl p-3 flex items-center justify-between">
               <div className="truncate pr-2">
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">Document to Download</p>
-                <p className="text-xs md:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">{activePaymentModal.docTitle}</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
+                  Document to Download
+                </p>
+                <p className="text-xs md:text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {activePaymentModal.docTitle}
+                </p>
               </div>
-              <span className="px-2.5 py-1 text-xs font-black rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shrink-0">
-                {activePaymentModal.format}
-              </span>
+              <div className="text-right shrink-0">
+                <span className="px-2.5 py-0.5 text-xs font-black rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 block">
+                  Ksh 15.00
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5 font-bold uppercase">
+                  {activePaymentModal.format}
+                </span>
+              </div>
             </div>
 
-            {/* Toggle Payment Mode */}
-            <div className="flex border border-slate-200 dark:border-slate-800 rounded-xl p-1 bg-slate-100 dark:bg-slate-800/70 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMode('STK_PROMPT');
-                  setErrorMsg('');
-                }}
-                className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 ${
-                  paymentMode === 'STK_PROMPT'
-                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <Radio className="w-3.5 h-3.5" />
-                <span>1. Send Prompt to Phone (STK)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMode('MANUAL_CODE');
-                  setErrorMsg('');
-                }}
-                className={`flex-1 py-1.5 rounded-lg transition flex items-center justify-center space-x-1.5 ${
-                  paymentMode === 'MANUAL_CODE'
-                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>2. Send Money / Code</span>
-              </button>
-            </div>
-
-            {/* Mode 1: Send Prompt to Phone (STK Push) */}
-            {paymentMode === 'STK_PROMPT' && (
-              <div className="space-y-3.5">
-                {!stkSent ? (
-                  <>
-                    <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 text-xs space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-emerald-900 dark:text-emerald-200 flex items-center">
-                          <Radio className="w-4 h-4 mr-1.5 text-emerald-600 animate-pulse" />
-                          M-Pesa STK Push Prompt
-                        </span>
-                        <span className="font-black text-emerald-700 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full border border-emerald-300">
-                          Ksh 15.00
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
-                        Enter your Safaricom number. We will send an immediate payment prompt directly to your phone screen so you can authorize with your PIN.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        Safaricom Phone Number:
-                      </label>
-                      <div className="relative">
-                        <Smartphone className="absolute left-3 top-2.5 w-4 h-4 text-emerald-600" />
-                        <input
-                          type="tel"
-                          value={phoneNumber}
-                          onChange={(e) => setPhoneNumber(e.target.value)}
-                          placeholder="e.g. 0707423879 or 0712345678"
-                          className="w-full pl-9 pr-3 py-2.5 text-sm font-semibold rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                        />
-                      </div>
-                      <span className="text-[10px] text-slate-400 mt-1 block">
-                        Recipient: 0707423879 (IMANI TEACHERS CENTER) • Fixed cost: Ksh 15
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleSendStkPush}
-                      disabled={isVerifying}
-                      className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm shadow-md shadow-emerald-600/30 flex items-center justify-center space-x-2 transition disabled:opacity-50 cursor-pointer"
-                    >
-                      <Send className="w-4 h-4" />
-                      <span>{isVerifying ? 'Sending Prompt...' : 'Send M-Pesa Prompt to Phone (Ksh 15)'}</span>
-                    </button>
-                  </>
-                ) : (
-                  // STK Prompt Triggered & Screen Simulator
-                  <div className="space-y-3.5 animate-fade-in">
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-300 dark:border-emerald-800 text-xs text-center space-y-1">
-                      <div className="inline-flex items-center space-x-1 font-bold text-emerald-800 dark:text-emerald-300">
-                        <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
-                        <span>Prompt Sent to {phoneNumber}</span>
-                      </div>
-                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                        Please check your phone screen. An M-Pesa popup prompt has been displayed!
-                      </p>
-                    </div>
-
-                    {/* Realistic Safaricom STK Push Dialog Simulation */}
-                    <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-xl border border-slate-700 space-y-3">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span className="text-[10px] font-bold text-emerald-400 tracking-wider uppercase flex items-center">
-                          <Smartphone className="w-3 h-3 mr-1" /> SIM TOOLKIT • M-PESA
-                        </span>
-                        <span className="text-[10px] text-slate-400 flex items-center font-mono">
-                          <Clock className="w-3 h-3 mr-1 text-amber-400" /> {stkCountdown}s
-                        </span>
-                      </div>
-
-                      <div className="text-xs space-y-1">
-                        <p className="font-semibold text-slate-200">
-                          Do you want to pay Ksh 15.00 to IMANI TEACHERS CENTER (0707423879)?
-                        </p>
-                        <p className="text-[11px] text-slate-400">Enter your M-Pesa PIN:</p>
-                      </div>
-
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                        <input
-                          type="password"
-                          maxLength={4}
-                          value={simulatedPin}
-                          onChange={(e) => setSimulatedPin(e.target.value)}
-                          placeholder="PIN: • • • •"
-                          className="w-full pl-9 pr-3 py-2 bg-slate-800 text-white font-mono text-center tracking-widest text-sm rounded-xl border border-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        />
-                      </div>
-
-                      <div className="flex space-x-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setStkSent(false)}
-                          className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl transition"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleAuthorizePrompt}
-                          className="flex-2 py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs rounded-xl transition flex items-center justify-center space-x-1"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Authorize & Download</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Didn't receive prompt?</span>
-                      <button
-                        type="button"
-                        onClick={handleSendStkPush}
-                        className="text-emerald-600 font-bold hover:underline"
-                      >
-                        Resend Prompt
-                      </button>
-                    </div>
-                  </div>
-                )}
+            {/* STEP 1: PAYMENT INSTRUCTIONS (Ksh 15 to 0707423879) */}
+            <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-3xl p-4 text-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-800 pb-2">
+                <span className="font-extrabold text-xs text-emerald-900 dark:text-emerald-200 uppercase tracking-wide flex items-center">
+                  <CreditCard className="w-4 h-4 mr-1.5 text-emerald-600" />
+                  Step 1: Pay Ksh 15 via M-Pesa
+                </span>
+                <span className="font-mono font-bold text-emerald-800 dark:text-emerald-300 text-xs">
+                  Fixed Fee: Ksh 15
+                </span>
               </div>
-            )}
 
-            {/* Mode 2: Send Money to 0707423879 with Manual Code */}
-            {paymentMode === 'MANUAL_CODE' && (
-              <div className="space-y-3">
-                <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl p-3.5 text-xs space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-emerald-800 dark:text-emerald-300">
-                      M-Pesa Send Money Option
-                    </span>
-                    <span className="text-[11px] font-bold text-emerald-700 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-full border border-emerald-200">
-                      Ksh 15
-                    </span>
+              {/* Quick Copy Grid */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
+                  <div className="truncate">
+                    <span className="text-[10px] text-slate-400 block">Recipient Phone:</span>
+                    <strong className="font-mono text-slate-900 dark:text-white text-xs md:text-sm">0707423879</strong>
                   </div>
-
-                  <div className="space-y-1.5">
-                    <p>1. Open M-Pesa &gt; <strong>Send Money</strong></p>
-                    <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                      <div>
-                        <span className="text-[10px] text-slate-400">Recipient Phone:</span>
-                        <p className="font-mono font-bold text-xs text-slate-900 dark:text-white">0707423879</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyPhone}
-                        className="text-xs text-emerald-600 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 transition"
-                      >
-                        {copiedPhone ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                      <div>
-                        <span className="text-[10px] text-slate-400">Amount:</span>
-                        <p className="font-mono font-bold text-xs text-slate-900 dark:text-white">Ksh 15</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyAmount}
-                        className="text-xs text-emerald-600 font-semibold px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 transition"
-                      >
-                        {copiedAmount ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyPhone}
+                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 hover:bg-emerald-200 px-2.5 py-1 rounded-lg ml-1 shrink-0 cursor-pointer"
+                  >
+                    {copiedPhone ? 'Copied' : 'Copy'}
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Enter M-Pesa SMS Code:
-                  </label>
+                <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800/80">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Amount:</span>
+                    <strong className="font-mono text-slate-900 dark:text-white text-xs md:text-sm">Ksh 15</strong>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyAmount}
+                    className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 hover:bg-emerald-200 px-2.5 py-1 rounded-lg ml-1 shrink-0 cursor-pointer"
+                  >
+                    {copiedAmount ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 Step Instructions */}
+              <div className="space-y-1 text-slate-700 dark:text-slate-300 text-[11px] leading-relaxed">
+                <p>1. Open M-Pesa on your phone &gt; <strong>Send Money</strong></p>
+                <p>2. Enter Phone: <strong className="text-emerald-700 dark:text-emerald-400">0707423879</strong> (IMANI TEACHERS CENTER)</p>
+                <p>3. Enter Amount: <strong className="text-emerald-700 dark:text-emerald-400">Ksh 15</strong> and complete with your PIN</p>
+              </div>
+
+              {/* Optional STK prompt button */}
+              <div className="pt-1 border-t border-emerald-200/60 dark:border-emerald-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex-1">
                   <input
-                    type="text"
-                    value={transactionCode}
-                    onChange={(e) => setTransactionCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. SLT479K01Z"
-                    className="w-full px-3 py-2 text-xs font-mono uppercase tracking-wider rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Your Safaricom phone e.g. 0712345678"
+                    className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-mono"
                   />
                 </div>
-
                 <button
                   type="button"
-                  onClick={() => handleVerifyManualCode()}
-                  disabled={isVerifying}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/30 flex items-center justify-center space-x-1.5 transition cursor-pointer"
+                  onClick={handleTriggerStkPush}
+                  disabled={isSendingPrompt}
+                  className="py-1 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-1 shrink-0 cursor-pointer disabled:opacity-50"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Verify Code & Download</span>
+                  <Send className="w-3 h-3" />
+                  <span>{isSendingPrompt ? 'Sending...' : 'Request STK Push'}</span>
                 </button>
               </div>
-            )}
+
+              {promptSentMessage && (
+                <div className="p-2 bg-emerald-100/80 dark:bg-emerald-950/50 rounded-xl text-emerald-800 dark:text-emerald-300 text-[11px] flex items-center space-x-1.5 animate-fade-in">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>{promptSentMessage}</span>
+                </div>
+              )}
+            </div>
+
+            {/* STEP 2: CONFIRM PAYMENT WITH M-PESA REFERENCE CODE */}
+            <form onSubmit={handleConfirmMpesaCode} className="bg-slate-900 text-white p-4 rounded-3xl shadow-xl border border-slate-700 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="font-extrabold text-xs text-emerald-400 uppercase tracking-wide flex items-center">
+                  <ShieldCheck className="w-4 h-4 mr-1.5 text-emerald-400" />
+                  Step 2: Enter M-Pesa Reference Code
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">Compulsory</span>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-200">
+                  M-Pesa Transaction Reference Code (from Safaricom SMS):
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 w-4 h-4 text-emerald-400" />
+                  <input
+                    type="text"
+                    required
+                    value={transactionCode}
+                    onChange={(e) => setTransactionCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. TD7491NM82 or SLT894K20L"
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-800 text-white font-mono text-sm uppercase tracking-wider font-extrabold rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <p className="text-[10.5px] text-slate-400">
+                  Check your phone SMS from MPESA after sending Ksh 15 to <strong>0707423879</strong>.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isVerifying}
+                className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-emerald-500/25 transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>
+                  {isVerifying ? 'Confirming with M-Pesa...' : 'Confirm M-Pesa Payment & Download Document'}
+                </span>
+              </button>
+            </form>
 
             {errorMsg && (
-              <div className="flex items-center space-x-1.5 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900">
+              <div className="flex items-center space-x-1.5 text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 p-3 rounded-2xl border border-rose-200 dark:border-rose-900 animate-fade-in">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
-
-            {/* Quick Demo Sandbox Option */}
-            <button
-              type="button"
-              onClick={() => {
-                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-                let code = 'SLT';
-                for (let i = 0; i < 7; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-                completePayment(code);
-              }}
-              className="w-full py-1.5 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-[11px] font-semibold flex items-center justify-center space-x-1 transition"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-600" />
-              <span>Instant Test Simulator: Auto-Authorize & Download</span>
-            </button>
           </div>
         )}
       </div>

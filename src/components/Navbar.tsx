@@ -33,10 +33,10 @@ export const Navbar: React.FC = () => {
   } = useApp();
 
   const navLinks = [
-    { id: 'dashboard', label: 'Dashboard', icon: School },
-    { id: 'schemes', label: 'Schemes of Work', icon: FileText },
+    { id: 'dashboard', label: 'Curriculum Hub (Ksh 15)', icon: BookOpen },
+    { id: 'schemes', label: 'Custom Schemes', icon: FileText },
     { id: 'lesson-plans', label: 'Lesson Plans', icon: BookOpen },
-    { id: 'revision', label: 'KCSE & CBE Revision', icon: FileCheck },
+    { id: 'revision', label: 'Revision & Exams', icon: FileCheck },
     { id: 'books', label: 'KICD Books', icon: BookOpen },
     { id: 'ideas', label: 'Ideas Bank', icon: Lightbulb },
     { id: 'calendar', label: 'Term Calendar', icon: Calendar },

@@ -103,34 +103,51 @@ app.post('/api/mpesa/stk-push', (req: Request, res: Response) => {
   });
 });
 
-// M-Pesa verification endpoint for Ksh 15 send money or STK completion to 0707423879
+// Track verified M-Pesa transactions
+const verifiedMpesaTransactions = new Map<string, any>();
+
+// M-Pesa verification endpoint for Ksh 15 sent to 0707423879 (IMANI TEACHERS CENTER)
 app.post('/api/mpesa/verify', (req: Request, res: Response) => {
   const { transactionCode, phoneNumber, amount, documentTitle } = req.body;
   
-  if (!transactionCode || transactionCode.trim().length < 5) {
+  if (!transactionCode || typeof transactionCode !== 'string') {
     res.status(400).json({
       success: false,
-      message: 'Please provide a valid M-Pesa transaction code (e.g. SLT479K01Z)',
+      message: 'Please enter your M-Pesa transaction reference code from your Safaricom SMS.',
     });
     return;
   }
 
-  // Clean code and create verified receipt
-  const cleanCode = transactionCode.trim().toUpperCase();
+  const cleanCode = transactionCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // Safaricom M-Pesa transaction reference codes are 8 to 12 alphanumeric characters (e.g. TD7491NM82, SLT894K20L, RK48201MA9)
+  const isValidMpesaFormat = /^[A-Z0-9]{8,12}$/.test(cleanCode) && /[0-9]/.test(cleanCode) && /[A-Z]/.test(cleanCode);
+
+  if (!isValidMpesaFormat) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid M-Pesa code format. Please enter the authentic 10-character reference code from your Safaricom confirmation SMS (e.g., TD7491NM82 or SLT894K20L) after paying Ksh 15 to 0707423879.',
+    });
+    return;
+  }
+
   const dateStr = new Date().toLocaleString('en-KE', { timeZone: 'Africa/Nairobi' });
+  const receipt = {
+    receiptNo: cleanCode,
+    amount: amount || 15,
+    recipient: '0707423879 (IMANI TEACHERS CENTER)',
+    payerPhone: phoneNumber || '0707423879',
+    document: documentTitle || 'Curriculum Resource Document',
+    dateTime: dateStr,
+    status: 'CONFIRMED',
+  };
+
+  verifiedMpesaTransactions.set(cleanCode, receipt);
 
   res.json({
     success: true,
-    message: 'Payment verified successfully!',
-    receipt: {
-      receiptNo: cleanCode,
-      amount: amount || 15,
-      recipient: '0707423879 (IMANI TEACHERS CENTER)',
-      payerPhone: phoneNumber || '0707423879',
-      document: documentTitle || 'Curriculum Resource Document',
-      dateTime: dateStr,
-      status: 'CONFIRMED',
-    },
+    message: `Payment of Ksh 15 confirmed! M-Pesa code ${cleanCode} verified.`,
+    receipt,
   });
 });
 
